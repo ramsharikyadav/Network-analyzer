@@ -20,6 +20,7 @@ export const NetworkGraph: React.FC<NetworkGraphProps> = ({ devices, onViewDetai
     const [transform, setTransform] = useState({ scale: 1, x: 0, y: 0 });
     const [isPanning, setIsPanning] = useState(false);
     const [panStart, setPanStart] = useState({ x: 0, y: 0 });
+    const [hoveredNodeIp, setHoveredNodeIp] = useState<string | null>(null);
     const svgRef = useRef<SVGSVGElement>(null);
 
     const nodes = useMemo(() => {
@@ -107,6 +108,8 @@ export const NetworkGraph: React.FC<NetworkGraphProps> = ({ devices, onViewDetai
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
     };
+    
+    const hoveredNode = nodes.find(n => n.ip === hoveredNodeIp);
 
     if (devices.length === 0) {
         return <div className="text-center text-gray-600 py-10">No devices to visualize.</div>;
@@ -153,17 +156,20 @@ export const NetworkGraph: React.FC<NetworkGraphProps> = ({ devices, onViewDetai
 
                 <g transform={`translate(${transform.x} ${transform.y}) scale(${transform.scale})`}>
                     {/* Lines from center to each node */}
-                    {nodes.map(node => (
-                        <line
-                            key={`line-${node.ip}`}
-                            x1={centerX}
-                            y1={centerY}
-                            x2={node.x}
-                            y2={node.y}
-                            className="stroke-gray-300"
-                            strokeWidth="1"
-                        />
-                    ))}
+                    {nodes.map(node => {
+                        const isHovered = hoveredNodeIp === node.ip;
+                        return (
+                             <line
+                                key={`line-${node.ip}`}
+                                x1={centerX}
+                                y1={centerY}
+                                x2={node.x}
+                                y2={node.y}
+                                className={`transition-all duration-200 ${isHovered ? 'stroke-blue-500' : 'stroke-gray-300'}`}
+                                strokeWidth={isHovered ? 2 : 1}
+                            />
+                        )
+                    })}
 
                     {/* Central Router Node */}
                     <g transform={`translate(${centerX}, ${centerY})`}>
@@ -178,12 +184,17 @@ export const NetworkGraph: React.FC<NetworkGraphProps> = ({ devices, onViewDetai
                     {nodes.map(node => {
                         const { Icon, colorClass, baseColorClass } = getDeviceVisuals(node.category);
                         const isConflict = !!node.conflict;
+                        const isHovered = hoveredNodeIp === node.ip;
+                        const isDimmed = hoveredNodeIp !== null && !isHovered;
+
                         return (
                             <g
                                 key={`node-${node.ip}`}
                                 transform={`translate(${node.x}, ${node.y})`}
                                 onClick={() => onViewDetails(node)}
-                                className="cursor-pointer group"
+                                onMouseEnter={() => setHoveredNodeIp(node.ip)}
+                                onMouseLeave={() => setHoveredNodeIp(null)}
+                                className={`cursor-pointer group transition-opacity duration-200 ${isDimmed ? 'opacity-50' : 'opacity-100'}`}
                                 aria-label={`Device at ${node.ip}, category ${node.category}`}
                             >
                                 {isConflict && (
@@ -209,6 +220,27 @@ export const NetworkGraph: React.FC<NetworkGraphProps> = ({ devices, onViewDetai
                             </g>
                         );
                     })}
+
+                    {/* Tooltip */}
+                    {hoveredNode && (
+                        <foreignObject
+                            x={hoveredNode.x + 15}
+                            y={hoveredNode.y - 45}
+                            width="160"
+                            height="100"
+                            className="pointer-events-none overflow-visible"
+                        >
+                            {/* FIX: Suppress TypeScript error for the 'xmlns' attribute, which is valid on a div inside an SVG foreignObject. */}
+                            {/* @ts-ignore */}
+                            <div 
+                                xmlns="http://www.w3.org/1999/xhtml"
+                                className="bg-gray-800/90 text-white rounded-md p-2 shadow-lg text-xs transition-opacity duration-200"
+                            >
+                                <div className="font-bold font-mono">{hoveredNode.ip}</div>
+                                <div className="mt-1">{hoveredNode.category}</div>
+                            </div>
+                        </foreignObject>
+                    )}
                 </g>
             </svg>
         </div>
