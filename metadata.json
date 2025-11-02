@@ -1,9 +1,5 @@
 {
   "name": "LAN Network Analyzer1",
   "description": "A web-based LAN analyzer that scans the local network to discover devices, identify open ports, and provides AI-powered analysis of each device's potential role and services using the Gemini API.",
-  "requestFramePermissions": [
-    "camera",
-    "microphone",
-    "geolocation"
-  ]
+  "requestFramePermissions": []
 }
