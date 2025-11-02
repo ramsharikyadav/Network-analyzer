@@ -230,15 +230,17 @@ export const NetworkGraph: React.FC<NetworkGraphProps> = ({ devices, onViewDetai
                             height="100"
                             className="pointer-events-none overflow-visible"
                         >
-                            {/* FIX: Suppress TypeScript error for the 'xmlns' attribute, which is valid on a div inside an SVG foreignObject. */}
-                            {/* @ts-ignore */}
-                            <div 
-                                xmlns="http://www.w3.org/1999/xhtml"
-                                className="bg-gray-800/90 text-white rounded-md p-2 shadow-lg text-xs transition-opacity duration-200"
-                            >
-                                <div className="font-bold font-mono">{hoveredNode.ip}</div>
-                                <div className="mt-1">{hoveredNode.category}</div>
-                            </div>
+                            {/* FIX: The original `@ts-ignore` was in a JSX comment and thus ineffective. The fix wraps the `div` in a JS expression block to allow for a JS comment that TypeScript can process to suppress the error for the valid `xmlns` attribute. */}
+                            {
+                                // @ts-expect-error The 'xmlns' attribute is required for the div to render correctly inside a foreignObject, but is not in React's HTML types.
+                                <div
+                                    xmlns="http://www.w3.org/1999/xhtml"
+                                    className="bg-gray-800/90 text-white rounded-md p-2 shadow-lg text-xs transition-opacity duration-200"
+                                >
+                                    <div className="font-bold font-mono">{hoveredNode.ip}</div>
+                                    <div className="mt-1">{hoveredNode.category}</div>
+                                </div>
+                            }
                         </foreignObject>
                     )}
                 </g>
