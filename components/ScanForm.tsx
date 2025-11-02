@@ -3,6 +3,7 @@ import { ScanIcon } from './icons/ScanIcon';
 import { getLocalIpAddress } from '../services/networkService';
 import { DetectIpIcon } from './icons/DetectIpIcon';
 import { parseCidr } from '../utils/cidrUtils';
+import { LocalIpDisplay } from './LocalIpDisplay';
 
 
 interface ScanFormProps {
@@ -21,6 +22,9 @@ export const ScanForm: React.FC<ScanFormProps> = ({ onScanStart, isScanning }) =
     const [timeout, setTimeout] = useState('800');
     const [error, setError] = useState('');
     const [isDetectingIp, setIsDetectingIp] = useState(false);
+    // New state to hold the IP detection result
+    const [detectedIpInfo, setDetectedIpInfo] = useState<{ ip: string | null, error: string | null }>({ ip: null, error: null });
+    const [detectionAttempted, setDetectionAttempted] = useState(false);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -48,18 +52,24 @@ export const ScanForm: React.FC<ScanFormProps> = ({ onScanStart, isScanning }) =
 
     const handleDetectIp = async () => {
         setIsDetectingIp(true);
+        setDetectionAttempted(true); // Mark that we've tried to detect
+        setDetectedIpInfo({ ip: null, error: null }); // Reset previous state
         setError('');
+
         try {
             const ip = await getLocalIpAddress();
             if (ip) {
                 const networkAddress = ip.substring(0, ip.lastIndexOf('.')) + '.0';
                 setCidr(`${networkAddress}/24`);
+                setDetectedIpInfo({ ip, error: null }); // Set success state
             } else {
-                setError('Could not detect local IP. Your browser might not support this feature or it may be blocked by a security setting.');
+                const errorMessage = 'Could not detect local IP. Your browser might not support this feature or it may be blocked by a security setting.';
+                setDetectedIpInfo({ ip: null, error: errorMessage }); // Set error state
             }
         } catch (err) {
             console.error('IP detection failed:', err);
-            setError('An error occurred while trying to detect your IP address.');
+            const errorMessage = 'An error occurred while trying to detect your IP address.';
+            setDetectedIpInfo({ ip: null, error: errorMessage }); // Set error state
         }
         setIsDetectingIp(false);
     };
@@ -91,6 +101,15 @@ export const ScanForm: React.FC<ScanFormProps> = ({ onScanStart, isScanning }) =
                     </button>
                 </div>
                  <p className="text-xs text-gray-500 mt-2">Click a preset or detect your network to populate the range below.</p>
+                 
+                 {/* Conditionally render the new component */}
+                 {detectionAttempted && (
+                    <LocalIpDisplay 
+                        isLoading={isDetectingIp}
+                        ipAddress={detectedIpInfo.ip}
+                        error={detectedIpInfo.error}
+                    />
+                 )}
             </div>
 
             <p className="text-sm font-medium text-gray-700 mb-2">Scan Configuration</p>

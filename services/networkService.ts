@@ -28,9 +28,9 @@ export const COMMON_PORTS = [
 ];
 
 /**
- * Attempts to check if a specific port is open on a host using a WebSocket connection.
- * This is a browser-limited way of port scanning. It's not perfectly reliable but
- * can detect services that respond to WebSocket handshake attempts.
+ * Attempts to check if a specific port is open on a host using a 'no-cors' fetch request.
+ * This is a more reliable browser-based technique than WebSockets for port scanning.
+ * It works by detecting network errors (e.g., connection refused) vs. receiving any response.
  * @param host The IP address to scan.
  * @param port The port number to check.
  * @param timeout The connection timeout in milliseconds.
@@ -38,39 +38,30 @@ export const COMMON_PORTS = [
  */
 const checkPort = (host: string, port: number, timeout = 800): Promise<{ port: number, status: 'open' | 'closed' }> => {
     return new Promise((resolve) => {
-        const socket = new WebSocket(`ws://${host}:${port}`);
-        let resolved = false;
+        const controller = new AbortController();
+        const signal = controller.signal;
 
         const timer = setTimeout(() => {
-            if (!resolved) {
-                resolved = true;
-                socket.close();
-                resolve({ port, status: 'closed' });
-            }
+            controller.abort();
         }, timeout);
 
-        socket.onopen = () => {
-            if (!resolved) {
-                resolved = true;
+        fetch(`http://${host}:${port}`, { mode: 'no-cors', signal, cache: 'no-cache' })
+            .then(() => {
+                // A response (even an opaque one) indicates the port is open.
                 clearTimeout(timer);
-                socket.close();
                 resolve({ port, status: 'open' });
-            }
-        };
-
-        socket.onerror = () => {
-            if (!resolved) {
-                resolved = true;
+            })
+            .catch(() => {
+                // A TypeError 'Failed to fetch' or an AbortError indicates the port is likely closed or blocked.
                 clearTimeout(timer);
                 resolve({ port, status: 'closed' });
-            }
-        };
+            });
     });
 };
 
 
 /**
- * A "ping" function that measures connection time to a port.
+ * A "ping" function that measures connection time to a port using a 'no-cors' fetch.
  * @param host The IP address to ping.
  * @param port The port number to connect to.
  * @param timeout The connection timeout in milliseconds.
@@ -79,33 +70,22 @@ const checkPort = (host: string, port: number, timeout = 800): Promise<{ port: n
 const pingPort = (host: string, port: number, timeout = 500): Promise<{ status: 'open' | 'closed', duration: number }> => {
     return new Promise((resolve) => {
         const startTime = performance.now();
-        const socket = new WebSocket(`ws://${host}:${port}`);
-        let resolved = false;
+        const controller = new AbortController();
+        const signal = controller.signal;
 
         const timer = setTimeout(() => {
-            if (!resolved) {
-                resolved = true;
-                socket.close();
-                resolve({ status: 'closed', duration: performance.now() - startTime });
-            }
+            controller.abort();
         }, timeout);
 
-        socket.onopen = () => {
-            if (!resolved) {
-                resolved = true;
+        fetch(`http://${host}:${port}`, { mode: 'no-cors', signal, cache: 'no-cache' })
+            .then(() => {
                 clearTimeout(timer);
-                socket.close();
                 resolve({ status: 'open', duration: performance.now() - startTime });
-            }
-        };
-
-        socket.onerror = () => {
-            if (!resolved) {
-                resolved = true;
+            })
+            .catch(() => {
                 clearTimeout(timer);
                 resolve({ status: 'closed', duration: performance.now() - startTime });
-            }
-        };
+            });
     });
 };
 

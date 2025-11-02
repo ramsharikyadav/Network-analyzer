@@ -159,32 +159,32 @@ const App: React.FC = () => {
                     <ScanForm onScanStart={handleStartScan} isScanning={isScanning} />
                     
                     {isScanning && (
-                         <div className="mt-6">
-                            <div className="flex justify-between items-baseline mb-2">
-                                <p className="text-lg text-blue-600 font-semibold">Scanning Network...</p>
-                                <div className="text-right">
-                                    <span className="text-2xl font-bold text-gray-800 tracking-tight">{scanProgress.found}</span>
-                                    <span className="text-sm font-medium text-gray-600 ml-1">{scanProgress.found === 1 ? 'Device' : 'Devices'} Found</span>
+                        <div className="mt-6 p-4 bg-slate-50 rounded-lg border border-slate-200">
+                            <div className="flex justify-between items-baseline mb-3">
+                                <div className="font-mono text-sm text-gray-600">
+                                    <span className="font-semibold text-gray-800">IP:</span>
+                                    <span className="ml-2 truncate">
+                                        {scanProgress.currentIp !== 'Scan Complete' ? scanProgress.currentIp : 'Finalizing...'}
+                                    </span>
+                                </div>
+                                <div className="font-mono text-sm text-gray-600">
+                                    {scanProgress.current} / {scanProgress.total}
                                 </div>
                             </div>
-                            
-                            <div className="relative w-full bg-gray-200 rounded-full h-5 overflow-hidden border border-gray-300">
+    
+                            <div className="relative w-full bg-gray-200 rounded-full h-6 overflow-hidden border border-gray-300 shadow-inner">
                                 <div 
-                                    className="bg-blue-600 h-5 rounded-full transition-all duration-300 ease-linear" 
-                                    style={{ width: `${scanProgress.total > 0 ? (scanProgress.current / scanProgress.total) * 100 : 0}%` }}>
-                                </div>
-                                <div className="absolute inset-0 flex items-center justify-center text-xs font-bold text-white" style={{ textShadow: '0 1px 1px rgba(0,0,0,0.2)'}}>
+                                    className="bg-gradient-to-r from-blue-500 to-sky-500 h-6 rounded-full transition-all duration-300 ease-out" 
+                                    style={{ width: `${scanProgress.total > 0 ? (scanProgress.current / scanProgress.total) * 100 : 0}%` }}
+                                ></div>
+                                <div className="absolute inset-0 flex items-center justify-center text-sm font-bold text-white drop-shadow-md">
                                     {Math.round(scanProgress.total > 0 ? (scanProgress.current / scanProgress.total) * 100 : 0)}%
                                 </div>
                             </div>
-
-                            <div className="flex justify-between text-sm text-gray-600 mt-1.5 font-mono">
-                                <span className="truncate pr-4">
-                                    {scanProgress.currentIp !== 'Scan Complete' ? `Checking: ${scanProgress.currentIp}` : 'Finalizing...'}
-                                </span>
-                                <span>
-                                    {scanProgress.current} / {scanProgress.total}
-                                </span>
+                            
+                            <div className="text-center mt-3">
+                                <span className="text-3xl font-bold text-blue-600 tracking-tight">{scanProgress.found}</span>
+                                <span className="text-base font-medium text-gray-700 ml-2">{scanProgress.found === 1 ? 'Device' : 'Devices'} Found</span>
                             </div>
                         </div>
                     )}
