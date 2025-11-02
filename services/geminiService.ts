@@ -6,10 +6,8 @@ const API_KEY = process.env.API_KEY;
 if (!API_KEY) {
   // This is a placeholder for environments where the key might not be set.
   // The app will show an error in the analysis field.
-  console.error("Gemini API key not found.");
+  console.error("Gemini API key not found. AI analysis will fail.");
 }
-
-const ai = new GoogleGenAI({ apiKey: API_KEY });
 
 /**
  * Analyzes a device based on its open ports using the Gemini API.
@@ -30,6 +28,8 @@ export const analyzeDeviceByPorts = async (device: Pick<Device, 'ip' | 'openPort
     if (device.openPorts.length === 0) {
         return { analysis: "No open ports detected to analyze.", category: "Unknown", services: [] };
     }
+
+    const ai = new GoogleGenAI({ apiKey: API_KEY });
 
     const categories = ['Server', 'Router', 'Workstation', 'Printer', 'NAS', 'IoT Device', 'Mobile Device', 'Unknown'];
     const prompt = `

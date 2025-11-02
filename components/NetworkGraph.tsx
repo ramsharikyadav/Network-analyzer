@@ -232,7 +232,8 @@ export const NetworkGraph: React.FC<NetworkGraphProps> = ({ devices, onViewDetai
                         >
                             {/* FIX: The original `@ts-ignore` was in a JSX comment and thus ineffective. The fix wraps the `div` in a JS expression block to allow for a JS comment that TypeScript can process to suppress the error for the valid `xmlns` attribute. */}
                             {
-                                // @ts-expect-error The 'xmlns' attribute is required for the div to render correctly inside a foreignObject, but is not in React's HTML types.
+                                // FIX: Changed from @ts-expect-error to @ts-ignore to resolve conflicting TypeScript errors where one tool reported the directive as unused while another reported a type error.
+                                // @ts-ignore The 'xmlns' attribute is required for the div to render correctly inside a foreignObject, but is not in React's HTML types.
                                 <div
                                     xmlns="http://www.w3.org/1999/xhtml"
                                     className="bg-gray-800/90 text-white rounded-md p-2 shadow-lg text-xs transition-opacity duration-200"
