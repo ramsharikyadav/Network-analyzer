@@ -3,12 +3,14 @@ import { Header } from './components/Header';
 import { ScanForm } from './components/ScanForm';
 import { ResultsTable } from './components/ResultsTable';
 import { DeviceDetailModal } from './components/DeviceDetailModal';
-import { scanIp } from './services/networkService';
+import { scanIp, COMMON_PORTS } from './services/networkService';
 import { analyzeDeviceByPorts } from './services/geminiService';
 import { Device } from './types';
 import { NetworkGraph } from './components/NetworkGraph';
 import { TableViewIcon } from './components/icons/TableViewIcon';
 import { GraphViewIcon } from './components/icons/GraphViewIcon';
+import { RefreshIcon } from './components/icons/RefreshIcon';
+import { NetworkTools } from './components/NetworkTools';
 
 // Helper to sort devices by IP address.
 const ipToSortable = (ip: string): number => {
@@ -20,41 +22,36 @@ const App: React.FC = () => {
     const [devices, setDevices] = useState<Device[]>([]);
     const [previousScanDevices, setPreviousScanDevices] = useState<Map<string, Device>>(new Map());
     const [isScanning, setIsScanning] = useState(false);
-    const [scanProgress, setScanProgress] = useState({ current: 0, total: 0, ip: '' });
+    const [scanProgress, setScanProgress] = useState({ current: 0, total: 0, currentIp: '', found: 0 });
     const [selectedDevice, setSelectedDevice] = useState<{ current: Device, previous?: Device } | null>(null);
     const [viewMode, setViewMode] = useState<'table' | 'graph'>('table');
+    const [lastScanParams, setLastScanParams] = useState<{ ipList: string[], timeout: number } | null>(null);
 
-    const handleStartScan = useCallback(async ({ subnet, start, end, ports, timeout }: { subnet: string, start: number, end: number, ports: number[], timeout: number }) => {
+    const handleStartScan = useCallback(async ({ ipList, timeout }: { ipList: string[], timeout: number }) => {
+        setLastScanParams({ ipList, timeout });
         // Store current devices as the previous scan before starting a new one
         const currentDevicesMap = new Map(devices.map(d => [d.ip, d]));
         setPreviousScanDevices(currentDevicesMap);
 
         setIsScanning(true);
         setDevices([]);
-        const total = end - start + 1;
-        setScanProgress({ current: 0, total, ip: '' });
+        const total = ipList.length;
+        setScanProgress({ current: 0, total, currentIp: '', found: 0 });
         setViewMode('table'); // Default to table view on new scan
-
-        const ipList: string[] = [];
-        for (let i = start; i <= end; i++) {
-            ipList.push(`${subnet}.${i}`);
-        }
 
         let foundDevicesCount = 0;
 
         // This function processes a single IP address.
         const processIp = async (ip: string) => {
-            try {
-                const scanResult = await scanIp(ip, ports, timeout);
+            // Announce which IP we are checking now.
+            setScanProgress(prev => ({ ...prev, currentIp: ip }));
+            let deviceFound = false;
 
-                // Update progress as each IP check finishes.
-                setScanProgress(prev => ({
-                    current: prev.current + 1,
-                    total,
-                    ip: `Checked ${ip}`
-                }));
+            try {
+                const scanResult = await scanIp(ip, COMMON_PORTS, timeout);
 
                 if (scanResult.status === 'Online') {
+                    deviceFound = true;
                     foundDevicesCount++;
                     const newDevice: Device = { ...scanResult, isAnalyzing: true, analysis: 'Analyzing with AI...', category: 'Analyzing...', services: [] };
                     
@@ -77,11 +74,15 @@ const App: React.FC = () => {
                                 return null;
                             };
 
-                            if (oldDevice && oldDevice.category && category) {
+                            // Check for a conflict if a device was found at this IP in the previous scan and its category has changed.
+                            if (oldDevice && oldDevice.category && category && oldDevice.category !== category) {
                                 const oldGroup = getCategoryGroup(oldDevice.category);
                                 const newGroup = getCategoryGroup(category);
                                 
-                                if (oldGroup && newGroup && oldGroup !== newGroup) {
+                                // A "drastic" change is one where the device's fundamental role changes.
+                                // This is determined by seeing if it moved between major groups (e.g., Computing -> Peripheral),
+                                // or if a previously identified device is now unknown (or vice versa).
+                                if (oldGroup !== newGroup) {
                                     conflict = { previousCategory: oldDevice.category };
                                 }
                             }
@@ -99,30 +100,47 @@ const App: React.FC = () => {
                 }
             } catch (scanError) {
                 console.error(`Error scanning IP ${ip}:`, scanError);
-                // Still update progress even on error
+            } finally {
+                 // Update progress counter once the IP check is fully complete (success or fail).
                 setScanProgress(prev => ({
+                    ...prev,
                     current: prev.current + 1,
-                    total,
-                    ip: `Error checking ${ip}`
+                    found: prev.found + (deviceFound ? 1 : 0),
                 }));
             }
         };
 
-        // Create an array of promises, one for each IP scan. This kicks them all off.
-        const scanPromises = ipList.map(ip => processIp(ip));
+        // Implement a concurrency limiter to avoid overwhelming the browser with too many simultaneous connections.
+        const concurrencyLimit = 20; // Process 20 IPs at a time.
+        const queue = [...ipList];
 
-        // Wait for all scan promises to settle (either resolve or reject).
-        await Promise.all(scanPromises);
+        const runWorker = async () => {
+            while (queue.length > 0) {
+                const ipToProcess = queue.shift();
+                if (ipToProcess) {
+                    await processIp(ipToProcess);
+                }
+            }
+        };
+        
+        const workers = Array(concurrencyLimit).fill(null).map(() => runWorker());
+        await Promise.all(workers);
 
         // Finalize scan state
         setIsScanning(false);
-        setScanProgress({ current: total, total, ip: 'Scan Complete' });
+        setScanProgress(prev => ({ ...prev, currentIp: 'Scan Complete' }));
         
         if (foundDevicesCount > 0) {
             // Switch to graph view after a short delay to allow final UI updates.
             setTimeout(() => setViewMode('graph'), 250);
         }
     }, [devices]);
+
+    const handleRefreshScan = useCallback(() => {
+        if (lastScanParams) {
+            handleStartScan(lastScanParams);
+        }
+    }, [lastScanParams, handleStartScan]);
 
     const handleViewDetails = (device: Device) => {
         const previous = previousScanDevices.get(device.ip);
@@ -141,23 +159,54 @@ const App: React.FC = () => {
                     <ScanForm onScanStart={handleStartScan} isScanning={isScanning} />
                     
                     {isScanning && (
-                        <div className="mt-6 text-center">
-                            <p className="text-lg text-blue-600">Scanning in progress...</p>
-                            <p className="text-sm text-gray-600 font-mono">
-                                {`${scanProgress.ip} (${scanProgress.current}/${scanProgress.total})`}
-                            </p>
-                            <div className="w-full bg-gray-200 rounded-full h-2.5 mt-2">
-                                <div 
-                                    className="bg-blue-600 h-2.5 rounded-full transition-all duration-300" 
-                                    style={{ width: `${(scanProgress.current / scanProgress.total) * 100}%` }}>
+                         <div className="mt-6">
+                            <div className="flex justify-between items-baseline mb-2">
+                                <p className="text-lg text-blue-600 font-semibold">Scanning Network...</p>
+                                <div className="text-right">
+                                    <span className="text-2xl font-bold text-gray-800 tracking-tight">{scanProgress.found}</span>
+                                    <span className="text-sm font-medium text-gray-600 ml-1">{scanProgress.found === 1 ? 'Device' : 'Devices'} Found</span>
                                 </div>
+                            </div>
+                            
+                            <div className="relative w-full bg-gray-200 rounded-full h-5 overflow-hidden border border-gray-300">
+                                <div 
+                                    className="bg-blue-600 h-5 rounded-full transition-all duration-300 ease-linear" 
+                                    style={{ width: `${scanProgress.total > 0 ? (scanProgress.current / scanProgress.total) * 100 : 0}%` }}>
+                                </div>
+                                <div className="absolute inset-0 flex items-center justify-center text-xs font-bold text-white" style={{ textShadow: '0 1px 1px rgba(0,0,0,0.2)'}}>
+                                    {Math.round(scanProgress.total > 0 ? (scanProgress.current / scanProgress.total) * 100 : 0)}%
+                                </div>
+                            </div>
+
+                            <div className="flex justify-between text-sm text-gray-600 mt-1.5 font-mono">
+                                <span className="truncate pr-4">
+                                    {scanProgress.currentIp !== 'Scan Complete' ? `Checking: ${scanProgress.currentIp}` : 'Finalizing...'}
+                                </span>
+                                <span>
+                                    {scanProgress.current} / {scanProgress.total}
+                                </span>
                             </div>
                         </div>
                     )}
 
-                    {!isScanning && devices.length === 0 && (
+                    {!isScanning && lastScanParams && (
+                         <div className="mt-6 p-4 bg-slate-50 rounded-lg border border-slate-200 flex justify-between items-center">
+                            <p className="text-sm text-gray-700">
+                                Scan complete. <span className="font-semibold">{devices.length}</span> {devices.length === 1 ? 'device' : 'devices'} found.
+                            </p>
+                            <button
+                                onClick={handleRefreshScan}
+                                className="flex items-center justify-center gap-2 bg-slate-600 hover:bg-slate-700 text-white font-bold py-2 px-4 rounded-md transition-all duration-200"
+                            >
+                                <RefreshIcon />
+                                Refresh Scan
+                            </button>
+                        </div>
+                    )}
+
+                    {!isScanning && !lastScanParams && (
                          <div className="mt-6 text-center text-gray-600">
-                            <p>Enter an IP range and scan options to see discovered devices.</p>
+                            <p>Enter a network range and scan options to see discovered devices.</p>
                             <p className="text-xs mt-2">Note: Scans are performed from your browser and may be slow or incomplete due to web security restrictions. Results may vary based on network conditions and browser.</p>
                         </div>
                     )}
@@ -190,6 +239,10 @@ const App: React.FC = () => {
                            )}
                         </div>
                     )}
+
+                    <div className="mt-12 border-t border-gray-200 pt-8">
+                        <NetworkTools />
+                    </div>
                 </div>
             </main>
             {selectedDevice && (

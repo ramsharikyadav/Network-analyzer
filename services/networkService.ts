@@ -146,25 +146,92 @@ export const checkStability = async (ip: string, port: number, pings: number = 2
 };
 
 /**
- * Scans a single IP address for a list of open ports.
+ * Scans a single IP address for a list of open ports using an efficient two-stage process.
  * @param ip The IP address to scan.
  * @param ports The list of ports to check.
  * @param timeout The timeout in ms for each port check.
  * @returns A promise that resolves to a Device object with scan results.
  */
 export const scanIp = async (ip: string, ports: number[], timeout: number): Promise<Pick<Device, 'ip' | 'status' | 'openPorts'>> => {
-    const portChecks = ports.map(port => checkPort(ip, port, timeout));
-    const results = await Promise.allSettled(portChecks);
+    // Optimization: Implement a two-stage scan. First, check a few common ports to quickly
+    // determine if a host is likely online. This avoids running a full, time-consuming
+    // port scan on every IP address in the range, many of which will be offline.
 
-    const openPorts = results
-        .filter((result): result is PromiseFulfilledResult<{ port: number, status: 'open' }> => 
-            result.status === 'fulfilled' && result.value.status === 'open'
-        )
-        .map(result => result.value.port);
+    // Stage 1: Discovery Scan
+    // A small set of the most common ports to quickly find active hosts (web, remote access, file sharing).
+    const discoveryPorts = [80, 443, 22, 445, 8080, 3389, 5900];
+    const discoveryChecks = discoveryPorts.map(port => checkPort(ip, port, timeout));
+    
+    const discoveryResults = await Promise.all(discoveryChecks);
+    const openDiscoveryPorts = discoveryResults
+        .filter(result => result.status === 'open')
+        .map(result => result.port);
+
+    // If no ports in the discovery set are open, we assume the host is offline and bail early.
+    if (openDiscoveryPorts.length === 0) {
+        return { ip, status: 'Offline', openPorts: [] };
+    }
+
+    // Stage 2: Full Scan
+    // The host is online. Now, check the rest of the ports from the main list.
+    const remainingPorts = ports.filter(p => !discoveryPorts.includes(p));
+    const fullScanChecks = remainingPorts.map(port => checkPort(ip, port, timeout));
+    const fullScanResults = await Promise.all(fullScanChecks);
+    
+    const openFullScanPorts = fullScanResults
+        .filter(result => result.status === 'open')
+        .map(result => result.port);
+    
+    // Combine results from both stages and sort them for consistent UI display.
+    const allOpenPorts = [...openDiscoveryPorts, ...openFullScanPorts];
+    allOpenPorts.sort((a, b) => a - b);
     
     return {
         ip,
-        status: openPorts.length > 0 ? 'Online' : 'Offline',
-        openPorts,
+        status: 'Online',
+        openPorts: allOpenPorts,
     };
+};
+
+/**
+ * Attempts to find the user's local IP address using WebRTC.
+ * This is the most common method to get local IP in a browser, but it's not guaranteed to work.
+ * @returns A promise that resolves to the local IP address string or null if not found.
+ */
+export const getLocalIpAddress = (): Promise<string | null> => {
+    return new Promise((resolve) => {
+        // @ts-ignore
+        const RTCPeerConnection = window.RTCPeerConnection || window.mozRTCPeerConnection || window.webkitRTCPeerConnection;
+        if (!RTCPeerConnection) {
+            return resolve(null);
+        }
+
+        const pc = new RTCPeerConnection({ iceServers: [] });
+        pc.createDataChannel('');
+        
+        pc.createOffer()
+          .then(offer => pc.setLocalDescription(offer))
+          .catch(() => resolve(null));
+
+        const ipRegex = /(192\.168\.[0-9]{1,3}\.[0-9]{1,3}|10\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}|172\.(1[6-9]|2[0-9]|3[0-1])\.[0-9]{1,3}\.[0-9]{1,3})/;
+        let ipFound = false;
+
+        pc.onicecandidate = (ice) => {
+            if (ipFound || !ice || !ice.candidate || !ice.candidate.candidate) {
+                return;
+            }
+            const match = ipRegex.exec(ice.candidate.candidate);
+            if (match) {
+                ipFound = true;
+                pc.onicecandidate = null;
+                resolve(match[1]);
+            }
+        };
+        
+        setTimeout(() => {
+            if (!ipFound) {
+                resolve(null);
+            }
+        }, 1000); // 1-second timeout
+    });
 };

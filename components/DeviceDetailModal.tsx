@@ -15,12 +15,11 @@ interface DeviceDetailModalProps {
 export const DeviceDetailModal: React.FC<DeviceDetailModalProps> = ({ device, onClose }) => {
     const [isCheckingStability, setIsCheckingStability] = useState(false);
     const [stabilityResult, setStabilityResult] = useState<StabilityResult | null>(null);
-    const [selectedPort, setSelectedPort] = useState<number | undefined>(
-        device.openPorts.length > 0 ? device.openPorts[0] : undefined
-    );
 
     const handleRunStabilityCheck = async () => {
-        if (!selectedPort) {
+        const portToTest = device.openPorts.length > 0 ? device.openPorts[0] : undefined;
+
+        if (!portToTest) {
             setStabilityResult({ 
                 successRate: 0, 
                 totalPings: 0, 
@@ -33,7 +32,7 @@ export const DeviceDetailModal: React.FC<DeviceDetailModalProps> = ({ device, on
 
         setIsCheckingStability(true);
         setStabilityResult(null);
-        const result = await checkStability(device.ip, selectedPort);
+        const result = await checkStability(device.ip, portToTest);
         setStabilityResult(result);
         setIsCheckingStability(false);
     };
@@ -143,46 +142,28 @@ export const DeviceDetailModal: React.FC<DeviceDetailModalProps> = ({ device, on
                          <div className="space-y-6">
                             {/* Network Stability */}
                             <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-                                <h4 className="font-semibold text-gray-700 mb-3">Network Stability Test</h4>
+                                <h4 className="font-semibold text-gray-700 mb-2">Network Stability Test</h4>
+                                <p className="text-sm text-gray-600 mb-3">
+                                    {device.openPorts.length > 0 
+                                        ? `This test will ping the device's first open port (${device.openPorts[0]}) to measure connection latency and stability.`
+                                        : 'No open ports are available to run a stability test.'
+                                    }
+                                </p>
                                 
-                                <div className="flex items-end gap-4">
-                                    <div className="flex-1">
-                                        <label htmlFor="port-select" className="block text-sm font-medium text-gray-600 mb-1">
-                                            Port to Test
-                                        </label>
-                                        <select
-                                            id="port-select"
-                                            value={selectedPort || ''}
-                                            onChange={(e) => setSelectedPort(Number(e.target.value))}
-                                            disabled={isCheckingStability || device.openPorts.length === 0}
-                                            className="w-full bg-white border border-gray-300 rounded-md px-3 py-2 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-200 disabled:cursor-not-allowed"
-                                        >
-                                            {device.openPorts.length > 0 ? (
-                                                device.openPorts.map(port => (
-                                                    <option key={port} value={port}>
-                                                        {port}
-                                                    </option>
-                                                ))
-                                            ) : (
-                                                <option value="">No open ports available</option>
-                                            )}
-                                        </select>
-                                    </div>
-                                    <button 
-                                        onClick={handleRunStabilityCheck} 
-                                        disabled={isCheckingStability || !selectedPort}
-                                        className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded-md transition-all duration-200 text-sm"
-                                    >
-                                        <PulseIcon />
-                                        {isCheckingStability ? 'Testing...' : 'Run Test'}
-                                    </button>
-                                </div>
+                                <button 
+                                    onClick={handleRunStabilityCheck} 
+                                    disabled={isCheckingStability || device.openPorts.length === 0}
+                                    className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded-md transition-all duration-200 text-sm"
+                                >
+                                    <PulseIcon />
+                                    {isCheckingStability ? 'Testing...' : 'Run Test'}
+                                </button>
                                 
                                 <div className="mt-4 min-h-[4.5rem] flex items-center justify-center p-2 bg-white rounded-md border border-gray-200">
                                     {isCheckingStability ? (
                                         <div className="flex items-center gap-2 text-gray-500">
                                             <Spinner />
-                                            <span>Pinging device on port {selectedPort}...</span>
+                                            <span>Pinging device...</span>
                                         </div>
                                     ) : stabilityResult ? (
                                         <div>
@@ -206,7 +187,7 @@ export const DeviceDetailModal: React.FC<DeviceDetailModalProps> = ({ device, on
                                             )}
                                         </div>
                                     ) : (
-                                         <p className="text-sm text-gray-500">Select a port and run the test to see stability results.</p>
+                                         <p className="text-sm text-gray-500">Run the test to see stability results.</p>
                                     )}
                                 </div>
                             </div>
